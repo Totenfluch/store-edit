@@ -1,0 +1,6 @@
+UPDATE store_players sp
+INNER JOIN store_items si on si.player_id = sp.id
+SET sp.credits = sp.credits + si.price_of_purchase
+WHERE si.unique_id = 'models/player/custom_player/marvel/ghostrider/ghostrider.mdl';
+
+DELETE FROM store_items WHERE unique_id = 'models/player/custom_player/marvel/ghostrider/ghostrider.mdl';

@@ -1,0 +1,3 @@
+UPDATE store_equipment SET unique_id = 'NEW MODEL PATH' WHERE unique_id = 'OLD MODEL PATH';
+UPDATE store_items SET unique_id = 'NEW MODEL PATH' WHERE unique_id = 'OLD MODEL PATH';
+UPDATE store_items SET price_of_purchase = <NEUER PREIS> WHERE unique_id = 'NEW MODEL PATH';
