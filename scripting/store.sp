@@ -653,6 +653,7 @@ public MenuHandler_ViewInventory(Handle:menu, MenuAction:action, client, param2)
 
 public OnMapStart()
 {
+	Preview_OnMapStart();
 	for (new i = 0; i < g_iTypeHandlers; ++i)
 	{
 		if (g_eTypeHandlers[i][fnMapStart] != INVALID_FUNCTION)

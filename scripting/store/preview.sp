@@ -1,16 +1,18 @@
+#pragma semicolon 1
+
+#include <sourcemod>
+#include <sdktools>
 
 enum playerPreview {
-	skinIndex, 
-	particleSkinIndex, 
-	particleIndex, 
-	previewTimes, 
-	iTrackClient,
-	iTrackModel,
-	iTrackParticle,
+	iDummyModelRef,
+	iParticleRef,
+	iTrackRef,
+	iMaterialTrailRef,
+	iPreviewTimeLeft,
 }
 
-int playerOptions[MAXPLAYERS + 1][playerPreview];
-float g_fPreviewTime = 15.0;
+int g_ePlayerOptions[MAXPLAYERS + 1][playerPreview];
+int g_iPreviewTime = 15;
 
 #define SF_NOUSERCONTROL    2
 #define SF_PASSABLE         8
@@ -20,257 +22,197 @@ public void Preview_OnPluginStart() {
 	
 }
 
-public void previewItemToPlayer(int client, int itemid) {
-	PrintToChat(client, "%s %s", g_eItems[itemid][szName], g_eTypeHandlers[g_eItems[itemid][iHandler]][szType]);
-	char itemtype[64];
-	strcopy(itemtype, sizeof(itemtype), g_eTypeHandlers[g_eItems[itemid][iHandler]][szType]);
-	if (StrEqual(itemtype, "playerskin")) {
-		previewSkin(client, itemid);
-	} else if (StrEqual(itemtype, "Aura")) {
-		previewParticle(client, itemid);
-	} else if(StrEqual(itemtype, "Particles")) {
-		createTrackTrainPreview(client, itemid);
+public void Preview_OnMapStart() {
+	CreateTimer(1.0, refreshTimer, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action refreshTimer(Handle timer, any data) {
+	for (int i = 0; i < MAXPLAYERS + 1; i += 1) {
+		if(g_ePlayerOptions[i][iPreviewTimeLeft] > 0) {
+			g_ePlayerOptions[i][iPreviewTimeLeft] -= 1;
+		} else if(g_ePlayerOptions[i][iPreviewTimeLeft] == 0) {
+			resetAllPreviews(i);
+		}
 	}
 }
 
 public void Preview_OnClientPostAdminCheck(int client) {
-	playerOptions[client][skinIndex] = -1;
-	playerOptions[client][particleSkinIndex] = -1;
-	playerOptions[client][particleIndex] = -1;
-	playerOptions[client][previewTimes] = -1;
-	playerOptions[client][iTrackClient] = -1;
-	playerOptions[client][iTrackModel] = -1;
-	playerOptions[client][iTrackParticle] = -1;
+	g_ePlayerOptions[client][iDummyModelRef] = -1;
+	g_ePlayerOptions[client][iParticleRef] = -1;
+	g_ePlayerOptions[client][iPreviewTimeLeft] = -1;
+}
+
+public void previewItemToPlayer(int client, int itemid) {
+	PrintToChat(client, "[-T-] Trying to preview %s: %s", g_eTypeHandlers[g_eItems[itemid][iHandler]][szType], g_eItems[itemid][szName]);
+	char itemtype[64];
+	strcopy(itemtype, sizeof(itemtype), g_eTypeHandlers[g_eItems[itemid][iHandler]][szType]);
+
+	resetAllPreviews(client);
+
+	if (StrEqual(itemtype, "playerskin")) {
+		createSkinPreview(client, itemid);
+	} else if (StrEqual(itemtype, "Aura")) {
+		createAuraPreview(client, itemid);
+	} else if(StrEqual(itemtype, "Particles")) {
+		createParticleTrailPreview(client, itemid);
+	} else if(StrEqual(itemtype, "trail")) {
+		createMaterialTrailPreview(client, itemid);
+	} else {
+		PrintToChat(client, "Could not create a Preview for this item. Will be implemented soon!");
+	}  
+}
+
+public void createSkinPreview(int client, int itemid) {
+	int dummyModel = createEntityModel(client, g_eItems[itemid][szUniqueId]);
+	attachRotator(dummyModel);
+	
+	// Triggers resetAllPreviews after g_iPreviewTime seconds
+	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime;
+}
+
+public void createAuraPreview(int client, int itemid) {
+	int dummyModel = createEntityModel(client, "models/player/tm_anarchist_variantb.mdl");
+	attachParticle(client, dummyModel, g_eItems[itemid][szUniqueId]);
+	
+	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime;
+}
+
+public void createParticleTrailPreview(int client, int itemid) {
+	// Create the model
+	int dummyModel = createEntityModel(client, "models/player/tm_anarchist_variantb.mdl");
+	// attach the particles to the model
+	attachParticle(client, dummyModel, g_eItems[itemid][szUniqueId]);
+	// create an invisible track in front of the client
+	int trackTrain = createTrackTrain(client);
+	// attach (and teleport) the model to the tracktrain and run it
+	attachEntityToEntity(trackTrain, dummyModel);
+	
+	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime;
+}
+
+public void createMaterialTrailPreview(int client, int itemid) {
+	// dummy Model
+	int dummyModel = createEntityModel(client, "models/player/tm_anarchist_variantb.mdl");
+	// Material trail
+	int trail = createMaterialTrail(client, itemid);
+	// attach material trail to dummy model
+	attachTrail(trail, dummyModel);
+	// create tracktain
+	int trackTrain = createTrackTrain(client);
+	// parent dummy model with material trail to train track
+	attachEntityToEntity(trackTrain, dummyModel);
+
+	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime;
 }
 
 public void resetAllPreviews(int client) {
-	killTrainPreviewImmidiatly(client);
+	deleteParticles(client);
+	deleteMaterialTrail(client);
+	deleteEntityModel(client);
+	deleteTrainTrack(client);
+
+	g_ePlayerOptions[client][iPreviewTimeLeft] = -1;
 }
 
-void previewSkin(int client, int itemid) {
-	resetAllPreviews(client);
-	int m_iViewModel = CreateEntityByName("prop_dynamic");
-	char m_szTargetName[32];
-	Format(m_szTargetName, 32, "Store_Preview_%d", m_iViewModel);
-	DispatchKeyValue(m_iViewModel, "targetname", m_szTargetName);
-	DispatchKeyValue(m_iViewModel, "spawnflags", "64");
-	DispatchKeyValue(m_iViewModel, "model", g_eItems[itemid][szUniqueId]);
-	DispatchKeyValue(m_iViewModel, "rendermode", "0");
-	DispatchKeyValue(m_iViewModel, "renderfx", "0");
-	DispatchKeyValue(m_iViewModel, "rendercolor", "255 255 255");
-	DispatchKeyValue(m_iViewModel, "renderamt", "255");
-	DispatchKeyValue(m_iViewModel, "solid", "0");
-	
-	DispatchSpawn(m_iViewModel);
-	
-	SetEntProp(m_iViewModel, Prop_Send, "m_CollisionGroup", 11);
-	
-	SetVariantString("run_upper_knife");
-	
-	AcceptEntityInput(m_iViewModel, "SetAnimation");
-	AcceptEntityInput(m_iViewModel, "Enable");
-	
-	int offset = GetEntSendPropOffs(m_iViewModel, "m_clrGlow");
-	SetEntProp(m_iViewModel, Prop_Send, "m_bShouldGlow", true, true);
-	SetEntProp(m_iViewModel, Prop_Send, "m_nGlowStyle", 0);
-	SetEntPropFloat(m_iViewModel, Prop_Send, "m_flGlowMaxDist", 200.0);
-	
-	//Miku Green
-	SetEntData(m_iViewModel, offset, 57, _, true);
-	SetEntData(m_iViewModel, offset + 1, 197, _, true);
-	SetEntData(m_iViewModel, offset + 2, 187, _, true);
-	SetEntData(m_iViewModel, offset + 3, 255, _, true);
-	
-	float m_fOrigin[3], m_fAngles[3], m_fRadians[2], m_fPosition[3];
-	
-	GetClientAbsOrigin(client, m_fOrigin);
+/* Base model creation function to use all the time */
+public int createEntityModel(int client, char[] entityModel) {
+	float m_fPosition[3];
+	float m_fAngles[3];
+	GetClientAbsOrigin(client, m_fPosition);
 	GetClientAbsAngles(client, m_fAngles);
 	
-	m_fRadians[0] = DegToRad(m_fAngles[0]);
-	m_fRadians[1] = DegToRad(m_fAngles[1]);
+	int dummyModel = CreateEntityByName("prop_dynamic");
+	if (dummyModel == -1) {
+		LogError("failed to create dummyModel");
+		return -1;
+	}
+	int currTime = GetTime();
+	char trackTargetname[64];
+	Format(trackTargetname, sizeof(trackTargetname), "storePreview_%i-%i-%i", currTime, GetRandomInt(1, 1000), client);
+	DispatchKeyValue(dummyModel, "targetname", trackTargetname);
+	DispatchKeyValue(dummyModel, "spawnflags", "64");
+	DispatchKeyValueVector(dummyModel, "origin", m_fPosition);
+	DispatchKeyValueVector(dummyModel, "angles", m_fAngles);
+	DispatchKeyValue(dummyModel, "model", entityModel);
+	DispatchKeyValue(dummyModel, "rendermode", "0");
+	DispatchKeyValue(dummyModel, "renderfx", "0");
+	DispatchKeyValue(dummyModel, "rendercolor", "255 255 255");
+	DispatchKeyValue(dummyModel, "renderamt", "255");
+	DispatchKeyValue(dummyModel, "solid", "0");
 	
-	m_fPosition[0] = m_fOrigin[0] + 64 * Cosine(m_fRadians[0]) * Cosine(m_fRadians[1]);
-	m_fPosition[1] = m_fOrigin[1] + 64 * Cosine(m_fRadians[0]) * Sine(m_fRadians[1]);
-	m_fPosition[2] = m_fOrigin[2] + 4 * Sine(m_fRadians[0]);
-	
-	m_fAngles[0] *= -1.0;
-	m_fAngles[1] *= -1.0;
-	
-	TeleportEntity(m_iViewModel, m_fPosition, m_fAngles, NULL_VECTOR);
-	
-	int m_iRotator = CreateEntityByName("func_rotating");
-	DispatchKeyValueVector(m_iRotator, "origin", m_fPosition);
-	DispatchKeyValue(m_iRotator, "targetname", "Item");
-	DispatchKeyValue(m_iRotator, "maxspeed", "40");
-	DispatchKeyValue(m_iRotator, "friction", "0");
-	DispatchKeyValue(m_iRotator, "dmg", "0");
-	DispatchKeyValue(m_iRotator, "solid", "0");
-	DispatchKeyValue(m_iRotator, "spawnflags", "64");
-	DispatchSpawn(m_iRotator);
-	
-	SetVariantString("!activator");
-	AcceptEntityInput(m_iViewModel, "SetParent", m_iRotator, m_iRotator);
-	AcceptEntityInput(m_iRotator, "Start");
-	
-	playerOptions[client][skinIndex] = EntIndexToEntRef(m_iViewModel);
-	playerOptions[client][previewTimes] = GetTime() + 60;
-	
-	SDKHook(m_iViewModel, SDKHook_SetTransmit, Hook_SetTransmit_SkinPreview);
-	
-	SetVariantString("idle");
-	AcceptEntityInput(m_iViewModel, "SetAnimation");
-	
-	CreateTimer(g_fPreviewTime, Timer_KillSkinPreview, client);
-}
-
-void previewParticle(int client, int itemid) {
-	resetAllPreviews(client);
-	int m_iViewModel = CreateEntityByName("prop_dynamic");
-	char m_szTargetName[32];
-	Format(m_szTargetName, 32, "Store_Preview_%d", m_iViewModel);
-	DispatchKeyValue(m_iViewModel, "targetname", m_szTargetName);
-	DispatchKeyValue(m_iViewModel, "spawnflags", "64");
-	DispatchKeyValue(m_iViewModel, "model", "models/player/tm_anarchist_variantb.mdl");
-	DispatchKeyValue(m_iViewModel, "rendermode", "0");
-	DispatchKeyValue(m_iViewModel, "renderfx", "0");
-	DispatchKeyValue(m_iViewModel, "rendercolor", "255 255 255");
-	DispatchKeyValue(m_iViewModel, "renderamt", "255");
-	DispatchKeyValue(m_iViewModel, "solid", "0");
-	
-	DispatchSpawn(m_iViewModel);
-	
-	SetEntProp(m_iViewModel, Prop_Send, "m_CollisionGroup", 11);
+	DispatchSpawn(dummyModel);
+	SetEntProp(dummyModel, Prop_Send, "m_CollisionGroup", 11);
 	
 	SetVariantString("run_upper_knife");
+	AcceptEntityInput(dummyModel, "SetAnimation");
+	AcceptEntityInput(dummyModel, "Enable");
 	
-	AcceptEntityInput(m_iViewModel, "SetAnimation");
-	AcceptEntityInput(m_iViewModel, "Enable");
-	
-	float m_fOrigin[3], m_fAngles[3], m_fRadians[2], m_fPosition[3];
-	
-	GetClientAbsOrigin(client, m_fOrigin);
-	GetClientAbsAngles(client, m_fAngles);
-	
-	m_fRadians[0] = DegToRad(m_fAngles[0]);
-	m_fRadians[1] = DegToRad(m_fAngles[1]);
-	
-	m_fPosition[0] = m_fOrigin[0] + 64 * Cosine(m_fRadians[0]) * Cosine(m_fRadians[1]);
-	m_fPosition[1] = m_fOrigin[1] + 64 * Cosine(m_fRadians[0]) * Sine(m_fRadians[1]);
-	m_fPosition[2] = m_fOrigin[2] + 4 * Sine(m_fRadians[0]);
-	
-	m_fAngles[0] *= -1.0;
-	m_fAngles[1] *= -1.0;
-	
-	TeleportEntity(m_iViewModel, m_fPosition, m_fAngles, NULL_VECTOR);
-	
-	playerOptions[client][previewTimes] = GetTime() + 60;
-	playerOptions[client][particleSkinIndex] = EntIndexToEntRef(m_iViewModel);
-	
-	SDKHook(m_iViewModel, SDKHook_SetTransmit, Hook_SetTransmit_ParticlePreview);
+	TeleportEntity(dummyModel, m_fPosition, m_fAngles, NULL_VECTOR);
 	
 	SetVariantString("idle");
-	AcceptEntityInput(m_iViewModel, "SetAnimation");
+	AcceptEntityInput(dummyModel, "SetAnimation");
 	
-	int particle_system = CreateEntityByName("info_particle_system");
-	DispatchKeyValue(particle_system, "start_active", "0");
-	DispatchKeyValue(particle_system, "effect_name", g_eItems[itemid][szUniqueId]);
-	DispatchSpawn(particle_system);
-	TeleportEntity(particle_system, m_fPosition, NULL_VECTOR, NULL_VECTOR);
-	ActivateEntity(particle_system);
+	SDKHook(dummyModel, SDKHook_SetTransmit, Hook_SetTransmit_DummyModel);
+	
+	g_ePlayerOptions[client][iDummyModelRef] = EntIndexToEntRef(dummyModel);
+	return dummyModel;
+}
+
+/* Rotator to spin models */
+public void attachRotator(int attachToEntity) {
+	int rotator = CreateEntityByName("func_rotating");
+	if (rotator == -1) {
+		LogError("failed to create rotator");
+		return;
+	}
+	float m_fPosition[3];
+	GetEntPropVector(attachToEntity, Prop_Data, "m_vecOrigin", m_fPosition);
+	DispatchKeyValueVector(rotator, "origin", m_fPosition);
+	DispatchKeyValue(rotator, "targetname", "Item");
+	DispatchKeyValue(rotator, "maxspeed", "40");
+	DispatchKeyValue(rotator, "friction", "0");
+	DispatchKeyValue(rotator, "dmg", "0");
+	DispatchKeyValue(rotator, "solid", "0");
+	DispatchKeyValue(rotator, "spawnflags", "64");
+	DispatchSpawn(rotator);
+	
 	SetVariantString("!activator");
-	AcceptEntityInput(particle_system, "SetParent", m_iViewModel, particle_system, 0);
-	CreateTimer(0.1, enableParticle, particle_system);
-	SDKHook(particle_system, SDKHook_SetTransmit, Hook_SetTransmit_ParticlePreview);
-	SetEdictFlags(particle_system, (GetEdictFlags(particle_system) ^ FL_EDICT_ALWAYS));
+	AcceptEntityInput(attachToEntity, "SetParent", rotator, rotator);
+	AcceptEntityInput(rotator, "Start");
+}
+
+/* Base Particle Generator */
+public int attachParticle(int client, int attachToEntity, char[] particleName) {
+	if (!IsValidEntity(attachToEntity)) {
+		LogError("failed to attach to entity. Id: %i", attachToEntity);
+		return -1;
+	}
+	float m_fPosition[3];
+	GetEntPropVector(attachToEntity, Prop_Data, "m_vecOrigin", m_fPosition);
+
+	int particleSystem = CreateEntityByName("info_particleSystem");
+	if (particleSystem == -1) {
+		LogError("failed to create particleSystem");
+		return -1;
+	}
+	DispatchKeyValue(particleSystem, "start_active", "0");
+	DispatchKeyValue(particleSystem, "effect_name", particleName);
+	DispatchSpawn(particleSystem);
+	TeleportEntity(particleSystem, m_fPosition, NULL_VECTOR, NULL_VECTOR);
+	ActivateEntity(particleSystem);
+	SetVariantString("!activator");
+	AcceptEntityInput(particleSystem, "SetParent", attachToEntity, particleSystem, 0);
+	CreateTimer(0.1, enableParticle, EntIndexToEntRef(particleSystem));
+	SetEdictFlags(particleSystem, (GetEdictFlags(particleSystem) ^ FL_EDICT_ALWAYS));
 	
-	playerOptions[client][particleIndex] = EntIndexToEntRef(particle_system);
+	SDKHook(particleSystem, SDKHook_SetTransmit, Hook_SetTransmit_Particle);
 	
-	CreateTimer(g_fPreviewTime, Timer_killParticlePreview, client);
+	g_ePlayerOptions[client][iParticleRef] = EntIndexToEntRef(particleSystem);
+	return particleSystem;
 }
 
-/* CODE TO RESET PREVIEWS */
-public Action Timer_killParticlePreview(Handle timer, int client) {
-	if (!IsValidEdict(playerOptions[client][particleSkinIndex])) {
-		return;
-	}
-	int entityIndex = EntRefToEntIndex(playerOptions[client][particleSkinIndex]);
-	if (IsValidEdict(entityIndex)) {
-		char m_szName[32];
-		GetEntPropString(entityIndex, Prop_Data, "m_iName", m_szName, 32);
-		if (StrContains(m_szName, "Store_Preview_", false) == 0) {
-			SetEntProp(entityIndex, Prop_Send, "m_bShouldGlow", false, true);
-			SDKUnhook(entityIndex, SDKHook_SetTransmit, Hook_SetTransmit_ParticlePreview);
-			AcceptEntityInput(entityIndex, "Kill");
-			removeParticles(client);
-		}
-	}
-	playerOptions[client][particleSkinIndex] = -1;
-}
-
-public Action Timer_KillSkinPreview(Handle timer, int client) {
-	if (!IsValidEdict(playerOptions[client][skinIndex])) {
-		return;
-	}
-	int removeSkinIndex = EntRefToEntIndex(playerOptions[client][skinIndex]);
-	if (IsValidEntity(removeSkinIndex)) {
-		SetEntProp(removeSkinIndex, Prop_Send, "m_bShouldGlow", false, true);
-		SDKUnhook(removeSkinIndex, SDKHook_SetTransmit, Hook_SetTransmit_SkinPreview);
-		AcceptEntityInput(removeSkinIndex, "kill");
-	}
-	playerOptions[client][skinIndex] = -1;
-}
-
-public void removeParticles(int client) {
-	if (!IsValidEdict(playerOptions[client][particleIndex])) {
-		return;
-	}
-	int removeParticleIndex = EntRefToEntIndex(playerOptions[client][particleIndex]);
-	if (IsValidEntity(removeParticleIndex)) {
-		if (IsClientInGame(client)) {
-			if (IsValidEdict(removeParticleIndex)) {
-				SDKUnhook(removeParticleIndex, SDKHook_SetTransmit, Hook_SetTransmit_ParticlePreview);
-				AcceptEntityInput(removeParticleIndex, "kill");
-			}
-		}
-		playerOptions[client][particleIndex] = -1;
-	}
-}
-
-/* PREVIEW HELPER FUNCTIONS */
-public Action enableParticle(Handle Timer, any ent) {
-	if (ent > 0 && IsValidEntity(ent)) {
-		AcceptEntityInput(ent, "Start");
-		setFlags(ent);
-	}
-}
-
-
-public void setFlags(int edict) {
-	if (GetEdictFlags(edict) & FL_EDICT_ALWAYS) {
-		SetEdictFlags(edict, (GetEdictFlags(edict) ^ FL_EDICT_ALWAYS));
-	}
-}
-
-
-/* TRANSMIT HOOKS */
-public Action Hook_SetTransmit_ParticlePreview(int ent, int client) {
-	// Enables TransmissionHook for Particles
-	setFlags(ent);
-	if (ent == EntRefToEntIndex(playerOptions[client][particleSkinIndex]) || ent == EntRefToEntIndex(playerOptions[client][particleIndex])) {
-		return Plugin_Continue;
-	}
-	return Plugin_Handled;
-}
-
-public Action Hook_SetTransmit_SkinPreview(int ent, int client) {
-	if (ent == playerOptions[client][skinIndex]) {
-		return Plugin_Continue;
-	}
-	return Plugin_Handled;
-}
-
-public int createTrackTrainPreview(int client, int itemid) {
-	killTrainPreviewImmidiatly(client);
+/* Train Tracks to move stuff */
+public int createTrackTrain(int client) {
 	int currTime = GetTime();
 	char uniqueId[32];
 	Format(uniqueId, sizeof(uniqueId), "%i-%i-%i", currTime, client, GetRandomInt(1, 1000));
@@ -303,6 +245,7 @@ public int createTrackTrainPreview(int client, int itemid) {
 	int startPath = CreateEntityByName("path_track");
 	if (startPath == -1) {
 		LogError("failed to create path_track start");
+		return -1;
 	}
 	DispatchKeyValueVector(startPath, "origin", startPos);
 	DispatchKeyValueVector(startPath, "angles", m_fAngles);
@@ -316,6 +259,7 @@ public int createTrackTrainPreview(int client, int itemid) {
 	int endPath = CreateEntityByName("path_track");
 	if (endPath == -1) {
 		LogError("failed to create path_track end");
+		return -1;
 	}
 	DispatchKeyValueVector(endPath, "origin", endPos);
 	DispatchKeyValueVector(endPath, "angles", m_fAngles);
@@ -334,6 +278,7 @@ public int createTrackTrainPreview(int client, int itemid) {
 	int trackTrain = CreateEntityByName("func_tracktrain");
 	if (trackTrain == -1) {
 		LogError("failed to create tracktrain");
+		return -1;
 	}
 	
 	char trainTrackTargetName[64];
@@ -348,144 +293,215 @@ public int createTrackTrainPreview(int client, int itemid) {
 	DispatchKeyValue(trackTrain, "spawnflags", spawnflags);
 	DispatchSpawn(trackTrain);
 	ActivateEntity(trackTrain);
-	SDKHook(trackTrain, SDKHook_SetTransmit, Hook_SetTransmit_PreviewTrain);
-	
-	int skinModel = createEntityModel(startPos, m_fAngles);
-	SDKHook(skinModel, SDKHook_SetTransmit, Hook_SetTransmit_PreviewTrain);
-	int particle = attachParticleTo(skinModel, g_eItems[itemid][szUniqueId]);
-	
-	// without delay it spawns somewhere in the map. Thanks valve!
-	DataPack linkData = CreateDataPack();
-	WritePackCell(linkData, EntIndexToEntRef(trackTrain));
-	WritePackCell(linkData, EntIndexToEntRef(skinModel));
-	CreateTimer(0.01, createLink, linkData);
-	
 	AcceptEntityInput(trackTrain, "StartForward");
 	
-	CreateTimer(2.1, backwards, EntIndexToEntRef(trackTrain));
+	CreateTimer(2.1, reverseTrackDirection, EntIndexToEntRef(trackTrain));
+	g_ePlayerOptions[client][iTrackRef] = EntIndexToEntRef(trackTrain);
 	
-	CreateTimer(g_fPreviewTime, killTrainPreview, EntIndexToEntRef(client));
-	
-	playerOptions[client][iTrackClient] = EntIndexToEntRef(trackTrain);
-	playerOptions[client][iTrackModel] = EntIndexToEntRef(skinModel);
-	playerOptions[client][iTrackParticle] = EntIndexToEntRef(particle);
+	// Note that startPath and endPath are edicts not entities. Therefore about -12312312 as index 
+	return trackTrain;
 }
 
-public Action createLink(Handle Timer, any datapack) {
-	ResetPack(datapack);
-	int trackTrain = EntRefToEntIndex(ReadPackCell(datapack));
-	int skinModel = EntRefToEntIndex(ReadPackCell(datapack));
-	
-	if (!IsValidEntity(trackTrain) || !IsValidEntity(skinModel)) {
-		// Don't link if entity doesnt exist anymore = cleanup happened
-		return;
-	}
-	
-	SetVariantEntity(trackTrain);
-	AcceptEntityInput(skinModel, "SetParent");
-}
-
-public Action backwards(Handle Timer, any tracktrainobject) {
-	int trackTrain = EntRefToEntIndex(tracktrainobject);
-	if (!IsValidEntity(trackTrain)) {
-		// Don't reverse if entity doesnt exist anymore = cleanup happened
-		return;
-	}
-	AcceptEntityInput(trackTrain, "Reverse");
-	CreateTimer(1.5, backwards, EntIndexToEntRef(trackTrain));
-}
-
-public int createEntityModel(float m_fPosition[3], float m_fAngles[3]) {
-	int m_iViewModel = CreateEntityByName("prop_dynamic");
-	if (m_iViewModel == -1) {
-		LogError("failed to create m_iViewModel");
-	}
-	int currTime = GetTime();
-	char trackTargetname[64];
-	Format(trackTargetname, sizeof(trackTargetname), "storePreview_%i-%i", currTime, GetRandomInt(1, 1000));
-	DispatchKeyValue(m_iViewModel, "targetname", trackTargetname);
-	DispatchKeyValue(m_iViewModel, "spawnflags", "64");
-	DispatchKeyValueVector(m_iViewModel, "origin", m_fPosition);
-	DispatchKeyValueVector(m_iViewModel, "angles", m_fAngles);
-	DispatchKeyValue(m_iViewModel, "model", "models/player/tm_anarchist_variantb.mdl");
-	DispatchKeyValue(m_iViewModel, "rendermode", "0");
-	DispatchKeyValue(m_iViewModel, "renderfx", "0");
-	DispatchKeyValue(m_iViewModel, "rendercolor", "255 255 255");
-	DispatchKeyValue(m_iViewModel, "renderamt", "255");
-	DispatchKeyValue(m_iViewModel, "solid", "0");
-	
-	DispatchSpawn(m_iViewModel);
-	
-	SetEntProp(m_iViewModel, Prop_Send, "m_CollisionGroup", 11);
-	
-	SetVariantString("run_upper_knife");
-	
-	AcceptEntityInput(m_iViewModel, "SetAnimation");
-	AcceptEntityInput(m_iViewModel, "Enable");
-	
-	TeleportEntity(m_iViewModel, m_fPosition, m_fAngles, NULL_VECTOR);
-	
-	SetVariantString("idle");
-	AcceptEntityInput(m_iViewModel, "SetAnimation");
-	
-	return m_iViewModel;
-}
-
-public int attachParticleTo(int attachToEntity, char[] particleName) {
-	if (!IsValidEntity(attachToEntity)) {
-		LogError("failed to attach to entity. Id: %i", attachToEntity);
+public int createMaterialTrail(int client, int itemid) {
+	int itemIndex = Store_GetDataIndex(itemid);
+	int trail = CreateEntityByName("env_sprite");
+	if (trail == -1) {
+		LogError("failed to create trail");
 		return -1;
 	}
-	float m_fPosition[3];
-	GetEntPropVector(attachToEntity, Prop_Data, "m_vecOrigin", m_fPosition);
-	int particle_system = CreateEntityByName("info_particle_system");
-	DispatchKeyValue(particle_system, "start_active", "0");
-	DispatchKeyValue(particle_system, "effect_name", particleName);
-	DispatchSpawn(particle_system);
-	TeleportEntity(particle_system, m_fPosition, NULL_VECTOR, NULL_VECTOR);
-	ActivateEntity(particle_system);
-	SetVariantString("!activator");
-	AcceptEntityInput(particle_system, "SetParent", attachToEntity, particle_system, 0);
-	CreateTimer(0.1, enableParticle, particle_system);
-	SetEdictFlags(particle_system, (GetEdictFlags(particle_system) ^ FL_EDICT_ALWAYS));
-	
-	SDKHook(particle_system, SDKHook_SetTransmit, Hook_SetTransmit_PreviewTrain);
-	
-	return particle_system;
+	DispatchKeyValue(trail, "classname", "env_sprite");
+	DispatchKeyValue(trail, "spawnflags", "1");
+	DispatchKeyValue(trail, "scale", "0.0");
+	DispatchKeyValue(trail, "rendermode", "10");
+	DispatchKeyValue(trail, "rendercolor", "255 255 255 0");
+	DispatchKeyValue(trail, "model", g_eTrails[itemIndex][szMaterial]);
+	DispatchSpawn(trail);
+	SDKHook(trail, SDKHook_SetTransmit, Hook_SetTransmit_MaterialTrail);
+			
+	int m_iColor[4];
+	m_iColor[0] = g_eTrails[itemIndex][iColor][0];
+	m_iColor[1] = g_eTrails[itemIndex][iColor][1];
+	m_iColor[2] = g_eTrails[itemIndex][iColor][2];
+	m_iColor[3] = g_eTrails[itemIndex][iColor][3];
+	TE_SetupBeamFollow(trail, g_eTrails[itemIndex][iCacheID], 0, 1.0, g_eTrails[itemIndex][fWidth], g_eTrails[itemIndex][fWidth], 10, m_iColor);
+	TE_SendToAll();
+
+	return trail;
 }
 
-public Action killTrainPreview(Handle Timer, any clientref) {
-	int client = EntRefToEntIndex(clientref);
-	killTrainPreviewImmidiatly(client);
+/* CLEANUP FUNCTIONS */
+public void deleteEntityModel(int client) {
+	if (!IsValidEdict(g_ePlayerOptions[client][iDummyModelRef])) {
+		return;
+	}
+	int deleteDummyModelIndex = EntRefToEntIndex(g_ePlayerOptions[client][iDummyModelRef]);
+	if (IsValidEntity(deleteDummyModelIndex)) {
+		SetEntProp(deleteDummyModelIndex, Prop_Send, "m_bShouldGlow", false, true);
+		SDKUnhook(deleteDummyModelIndex, SDKHook_SetTransmit, Hook_SetTransmit_DummyModel);
+		AcceptEntityInput(deleteDummyModelIndex, "kill");
+	}
+	g_ePlayerOptions[client][iDummyModelRef] = -1;
 }
 
-public void killTrainPreviewImmidiatly(int client) {
-	int trainIndex = EntRefToEntIndex(playerOptions[client][iTrackClient]);
-	int modelIndex = EntRefToEntIndex(playerOptions[client][iTrackModel]);
-	int removeParticleIndex = EntRefToEntIndex(playerOptions[client][iTrackParticle]);
-	
-	if (removeParticleIndex > 64 && IsValidEntity(removeParticleIndex)) {
-		SDKUnhook(removeParticleIndex, SDKHook_SetTransmit, Hook_SetTransmit_PreviewTrain);
-		AcceptEntityInput(removeParticleIndex, "kill");
+public void deleteParticles(int client) {
+	if (!IsValidEdict(g_ePlayerOptions[client][iParticleRef])) {
+		return;
 	}
-	
-	if (modelIndex > 64 && IsValidEntity(modelIndex)) {
-		SDKUnhook(modelIndex, SDKHook_SetTransmit, Hook_SetTransmit_PreviewTrain);
-		AcceptEntityInput(modelIndex, "kill");
-	}
-	
-	if (trainIndex > 64 && IsValidEntity(trainIndex)) {
-		SDKUnhook(trainIndex, SDKHook_SetTransmit, Hook_SetTransmit_PreviewTrain);
-		AcceptEntityInput(trainIndex, "kill");
+	int deleteParticleIndex = EntRefToEntIndex(g_ePlayerOptions[client][iParticleRef]);
+	if (IsValidEntity(deleteParticleIndex)) {
+		if (IsClientInGame(client)) {
+			if (IsValidEdict(deleteParticleIndex)) {
+				SDKUnhook(deleteParticleIndex, SDKHook_SetTransmit, Hook_SetTransmit_Particle);
+				AcceptEntityInput(deleteParticleIndex, "kill");
+			}
+		}
+		g_ePlayerOptions[client][iParticleRef] = -1;
 	}
 }
 
-public Action Hook_SetTransmit_PreviewTrain(int ent, int client) {
-	// Enables TransmissionHook for Particles
-	setFlags(ent);
-	if (ent == EntRefToEntIndex(playerOptions[client][iTrackClient]) || ent == EntRefToEntIndex(playerOptions[client][iTrackModel]) || ent == EntRefToEntIndex(playerOptions[client][iTrackParticle])) {
+public void deleteTrainTrack(int client) {
+	if (!IsValidEdict(g_ePlayerOptions[client][iTrackRef])) {
+		return;
+	}
+	int deleteTrackIndex = EntRefToEntIndex(g_ePlayerOptions[client][iTrackRef]);
+	if (IsValidEntity(deleteTrackIndex)) {
+		if (IsClientInGame(client)) {
+			if (IsValidEdict(deleteTrackIndex)) {
+				AcceptEntityInput(deleteTrackIndex, "kill");
+			}
+		}
+		g_ePlayerOptions[client][iTrackRef] = -1;
+	}
+}
+
+public void deleteMaterialTrail(int client) {
+	if (!IsValidEdict(g_ePlayerOptions[client][iMaterialTrailRef])) {
+		return;
+	}
+	int deleteMaterialTrailIndex = EntRefToEntIndex(g_ePlayerOptions[client][iMaterialTrailRef]);
+	if (IsValidEntity(deleteMaterialTrailIndex)) {
+		if (IsClientInGame(client)) {
+			if (IsValidEdict(deleteMaterialTrailIndex)) {
+				AcceptEntityInput(deleteMaterialTrailIndex, "kill");
+			}
+		}
+		g_ePlayerOptions[client][iMaterialTrailRef] = -1;
+	}
+}
+
+/* TRANSMIT HOOKS */
+public Action Hook_SetTransmit_DummyModel(int ent, int client) {
+	// Invalid Ref
+	if(g_ePlayerOptions[client][iDummyModelRef] <= 0) {
+		return Plugin_Continue;
+	}
+
+	int dummyEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iDummyModelRef]);
+	if (ent == dummyEntityIndex) {
 		return Plugin_Continue;
 	}
 	return Plugin_Handled;
 }
 
+public Action Hook_SetTransmit_Particle(int ent, int client) {
+	// Particles have a bug that need FL_EDICT_ALWAYS to be constantly set to hide them
+	setFlags(ent);
+	// Invalid Ref
+	if(g_ePlayerOptions[client][iParticleRef] <= 0) {
+		return Plugin_Continue;
+	}
+
+	int particleEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iParticleRef]);
+	if (ent == particleEntityIndex) {
+		return Plugin_Continue;
+	}
+	return Plugin_Handled;
+}
+
+public Action Hook_SetTransmit_MaterialTrail(int ent, int client) {
+	// Invalid Ref
+	if(g_ePlayerOptions[client][iMaterialTrailRef] <= 0) {
+		return Plugin_Continue;
+	}
+
+	int materialTrailEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iMaterialTrailRef]);
+	if (ent == materialTrailEntityIndex) {
+		return Plugin_Continue;
+	}
+	return Plugin_Handled;
+}
+
+
+/* PREVIEW HELPER FUNCTIONS */
+public Action enableParticle(Handle Timer, any entRef) {
+	int ent = EntRefToEntIndex(entRef);
+	if (ent > 0 && IsValidEntity(ent)) {
+		AcceptEntityInput(ent, "Start");
+		setFlags(ent);
+	}
+}
+
+public void setFlags(int edict) {
+	if (GetEdictFlags(edict) & FL_EDICT_ALWAYS) {
+		SetEdictFlags(edict, (GetEdictFlags(edict) ^ FL_EDICT_ALWAYS));
+	}
+}
+
+public void attachEntityToEntity(int attachTo, int toAttach) {
+	if(!IsValidEntity(attachTo) && !IsValidEntity(toAttach)) {
+		LogError("Could not attach %i to %i", attachTo, toAttach);
+		return;
+	}
+	float m_fPosition[3];
+	GetEntPropVector(attachTo, Prop_Data, "m_vecOrigin", m_fPosition);
+	TeleportEntity(toAttach, m_fPosition, NULL_VECTOR, NULL_VECTOR);
+	
+	// without delay it spawns somewhere in the map. Thanks valve!
+	DataPack linkData = CreateDataPack();
+	WritePackCell(linkData, EntIndexToEntRef(attachTo));
+	WritePackCell(linkData, EntIndexToEntRef(toAttach));
+	CreateTimer(0.01, createLink, linkData);
+}
+
+public Action createLink(Handle Timer, any datapack) {
+	ResetPack(datapack);
+	int attachTo = EntRefToEntIndex(ReadPackCell(datapack));
+	int toAttach = EntRefToEntIndex(ReadPackCell(datapack));
+	
+	if (!IsValidEntity(attachTo) || !IsValidEntity(toAttach)) {
+		return;
+	}
+	
+	SetVariantEntity(attachTo);
+	AcceptEntityInput(toAttach, "SetParent");
+}
+
+public Action reverseTrackDirection(Handle timer, any trackTrainObject) {
+	int trackTrain = EntRefToEntIndex(trackTrainObject);
+	if (!IsValidEntity(trackTrain)) {
+		return;
+	}
+	AcceptEntityInput(trackTrain, "Reverse");
+	CreateTimer(1.5, reverseTrackDirection, EntIndexToEntRef(trackTrain));
+}
+
+public attachTrail(int trail, int attachTo) {
+	float m_fOrigin[3];
+	float m_fAngle[3];
+	float m_fTemp[3] = {0.0, 90.0, 0.0};
+
+	GetEntPropVector(trail, Prop_Data, "m_vecOrigin", m_fOrigin);
+	GetEntPropVector(trail, Prop_Data, "m_angAbsRotation", m_fAngle);
+	SetEntPropVector(trail, Prop_Data, "m_angAbsRotation", m_fTemp);
+
+	float m_fPosition[3];
+	m_fPosition[0] = 30.0;
+	m_fPosition[1] = 0.0;
+	m_fPosition[2]= 35.0;
+	GetClientAbsOrigin(attachTo, m_fOrigin);
+	AddVectors(m_fOrigin, m_fPosition, m_fOrigin);
+	TeleportEntity(trail, m_fOrigin, m_fTemp, NULL_VECTOR);
+	SetVariantString("!activator");
+	AcceptEntityInput(trail, "SetParent", attachTo, trail);
+	SetEntPropVector(attachTo, Prop_Data, "m_angAbsRotation", m_fAngle);
+}
