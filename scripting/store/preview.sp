@@ -4,11 +4,11 @@
 #include <sdktools>
 
 enum playerPreview {
-	iDummyModelRef,
-	iParticleRef,
-	iTrackRef,
-	iMaterialTrailRef,
-	iPreviewTimeLeft,
+	iDummyModelRef, 
+	iParticleRef, 
+	iTrackRef, 
+	iMaterialTrailRef, 
+	iPreviewTimeLeft, 
 }
 
 int g_ePlayerOptions[MAXPLAYERS + 1][playerPreview];
@@ -19,7 +19,13 @@ int g_iPreviewTime = 15;
 
 
 public void Preview_OnPluginStart() {
-	
+	for (int i = 0; i < MAXPLAYERS + 1; i += 1) {
+		g_ePlayerOptions[i][iDummyModelRef] = -1;
+		g_ePlayerOptions[i][iParticleRef] = -1;
+		g_ePlayerOptions[i][iTrackRef] = -1;
+		g_ePlayerOptions[i][iMaterialTrailRef] = -1;
+		g_ePlayerOptions[i][iPreviewTimeLeft] = -1;
+	}
 }
 
 public void Preview_OnMapStart() {
@@ -27,10 +33,10 @@ public void Preview_OnMapStart() {
 }
 
 public Action refreshTimer(Handle timer, any data) {
-	for (int i = 0; i < MAXPLAYERS + 1; i += 1) {
-		if(g_ePlayerOptions[i][iPreviewTimeLeft] > 0) {
+	for (int i = 1; i < MAXPLAYERS + 1; i += 1) {
+		if (g_ePlayerOptions[i][iPreviewTimeLeft] > 0) {
 			g_ePlayerOptions[i][iPreviewTimeLeft] -= 1;
-		} else if(g_ePlayerOptions[i][iPreviewTimeLeft] == 0) {
+		} else if (g_ePlayerOptions[i][iPreviewTimeLeft] == 0) {
 			resetAllPreviews(i);
 		}
 	}
@@ -39,6 +45,8 @@ public Action refreshTimer(Handle timer, any data) {
 public void Preview_OnClientPostAdminCheck(int client) {
 	g_ePlayerOptions[client][iDummyModelRef] = -1;
 	g_ePlayerOptions[client][iParticleRef] = -1;
+	g_ePlayerOptions[client][iTrackRef] = -1;
+	g_ePlayerOptions[client][iMaterialTrailRef] = -1;
 	g_ePlayerOptions[client][iPreviewTimeLeft] = -1;
 }
 
@@ -46,20 +54,20 @@ public void previewItemToPlayer(int client, int itemid) {
 	PrintToChat(client, "[-T-] Trying to preview %s: %s", g_eTypeHandlers[g_eItems[itemid][iHandler]][szType], g_eItems[itemid][szName]);
 	char itemtype[64];
 	strcopy(itemtype, sizeof(itemtype), g_eTypeHandlers[g_eItems[itemid][iHandler]][szType]);
-
+	
 	resetAllPreviews(client);
-
+	
 	if (StrEqual(itemtype, "playerskin")) {
 		createSkinPreview(client, itemid);
 	} else if (StrEqual(itemtype, "Aura")) {
 		createAuraPreview(client, itemid);
-	} else if(StrEqual(itemtype, "Particles")) {
+	} else if (StrEqual(itemtype, "Particles")) {
 		createParticleTrailPreview(client, itemid);
-	} else if(StrEqual(itemtype, "trail")) {
+	} else if (StrEqual(itemtype, "trail")) {
 		createMaterialTrailPreview(client, itemid);
 	} else {
 		PrintToChat(client, "Could not create a Preview for this item. Will be implemented soon!");
-	}  
+	}
 }
 
 public void createSkinPreview(int client, int itemid) {
@@ -101,7 +109,7 @@ public void createMaterialTrailPreview(int client, int itemid) {
 	int trackTrain = createTrackTrain(client);
 	// parent dummy model with material trail to train track
 	attachEntityToEntity(trackTrain, dummyModel);
-
+	
 	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime;
 }
 
@@ -110,7 +118,7 @@ public void resetAllPreviews(int client) {
 	deleteMaterialTrail(client);
 	deleteEntityModel(client);
 	deleteTrainTrack(client);
-
+	
 	g_ePlayerOptions[client][iPreviewTimeLeft] = -1;
 }
 
@@ -189,8 +197,8 @@ public int attachParticle(int client, int attachToEntity, char[] particleName) {
 	}
 	float m_fPosition[3];
 	GetEntPropVector(attachToEntity, Prop_Data, "m_vecOrigin", m_fPosition);
-
-	int particleSystem = CreateEntityByName("info_particleSystem");
+	
+	int particleSystem = CreateEntityByName("info_particle_system");
 	if (particleSystem == -1) {
 		LogError("failed to create particleSystem");
 		return -1;
@@ -292,6 +300,7 @@ public int createTrackTrain(int client) {
 	FormatEx(spawnflags, sizeof(spawnflags), "%i", SF_NOUSERCONTROL | SF_PASSABLE);
 	DispatchKeyValue(trackTrain, "spawnflags", spawnflags);
 	DispatchSpawn(trackTrain);
+	TeleportEntity(trackTrain, startPos, m_fAngles, NULL_VECTOR);
 	ActivateEntity(trackTrain);
 	AcceptEntityInput(trackTrain, "StartForward");
 	
@@ -317,7 +326,7 @@ public int createMaterialTrail(int client, int itemid) {
 	DispatchKeyValue(trail, "model", g_eTrails[itemIndex][szMaterial]);
 	DispatchSpawn(trail);
 	SDKHook(trail, SDKHook_SetTransmit, Hook_SetTransmit_MaterialTrail);
-			
+	
 	int m_iColor[4];
 	m_iColor[0] = g_eTrails[itemIndex][iColor][0];
 	m_iColor[1] = g_eTrails[itemIndex][iColor][1];
@@ -325,7 +334,7 @@ public int createMaterialTrail(int client, int itemid) {
 	m_iColor[3] = g_eTrails[itemIndex][iColor][3];
 	TE_SetupBeamFollow(trail, g_eTrails[itemIndex][iCacheID], 0, 1.0, g_eTrails[itemIndex][fWidth], g_eTrails[itemIndex][fWidth], 10, m_iColor);
 	TE_SendToAll();
-
+	
 	return trail;
 }
 
@@ -349,11 +358,9 @@ public void deleteParticles(int client) {
 	}
 	int deleteParticleIndex = EntRefToEntIndex(g_ePlayerOptions[client][iParticleRef]);
 	if (IsValidEntity(deleteParticleIndex)) {
-		if (IsClientInGame(client)) {
-			if (IsValidEdict(deleteParticleIndex)) {
-				SDKUnhook(deleteParticleIndex, SDKHook_SetTransmit, Hook_SetTransmit_Particle);
-				AcceptEntityInput(deleteParticleIndex, "kill");
-			}
+		if (IsValidEdict(deleteParticleIndex)) {
+			SDKUnhook(deleteParticleIndex, SDKHook_SetTransmit, Hook_SetTransmit_Particle);
+			AcceptEntityInput(deleteParticleIndex, "kill");
 		}
 		g_ePlayerOptions[client][iParticleRef] = -1;
 	}
@@ -365,10 +372,8 @@ public void deleteTrainTrack(int client) {
 	}
 	int deleteTrackIndex = EntRefToEntIndex(g_ePlayerOptions[client][iTrackRef]);
 	if (IsValidEntity(deleteTrackIndex)) {
-		if (IsClientInGame(client)) {
-			if (IsValidEdict(deleteTrackIndex)) {
-				AcceptEntityInput(deleteTrackIndex, "kill");
-			}
+		if (IsValidEdict(deleteTrackIndex)) {
+			AcceptEntityInput(deleteTrackIndex, "kill");
 		}
 		g_ePlayerOptions[client][iTrackRef] = -1;
 	}
@@ -380,10 +385,8 @@ public void deleteMaterialTrail(int client) {
 	}
 	int deleteMaterialTrailIndex = EntRefToEntIndex(g_ePlayerOptions[client][iMaterialTrailRef]);
 	if (IsValidEntity(deleteMaterialTrailIndex)) {
-		if (IsClientInGame(client)) {
-			if (IsValidEdict(deleteMaterialTrailIndex)) {
-				AcceptEntityInput(deleteMaterialTrailIndex, "kill");
-			}
+		if (IsValidEdict(deleteMaterialTrailIndex)) {
+			AcceptEntityInput(deleteMaterialTrailIndex, "kill");
 		}
 		g_ePlayerOptions[client][iMaterialTrailRef] = -1;
 	}
@@ -392,10 +395,10 @@ public void deleteMaterialTrail(int client) {
 /* TRANSMIT HOOKS */
 public Action Hook_SetTransmit_DummyModel(int ent, int client) {
 	// Invalid Ref
-	if(g_ePlayerOptions[client][iDummyModelRef] <= 0) {
+	if (g_ePlayerOptions[client][iDummyModelRef] <= 0) {
 		return Plugin_Continue;
 	}
-
+	
 	int dummyEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iDummyModelRef]);
 	if (ent == dummyEntityIndex) {
 		return Plugin_Continue;
@@ -407,10 +410,10 @@ public Action Hook_SetTransmit_Particle(int ent, int client) {
 	// Particles have a bug that need FL_EDICT_ALWAYS to be constantly set to hide them
 	setFlags(ent);
 	// Invalid Ref
-	if(g_ePlayerOptions[client][iParticleRef] <= 0) {
+	if (g_ePlayerOptions[client][iParticleRef] <= 0) {
 		return Plugin_Continue;
 	}
-
+	
 	int particleEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iParticleRef]);
 	if (ent == particleEntityIndex) {
 		return Plugin_Continue;
@@ -420,10 +423,10 @@ public Action Hook_SetTransmit_Particle(int ent, int client) {
 
 public Action Hook_SetTransmit_MaterialTrail(int ent, int client) {
 	// Invalid Ref
-	if(g_ePlayerOptions[client][iMaterialTrailRef] <= 0) {
+	if (g_ePlayerOptions[client][iMaterialTrailRef] <= 0) {
 		return Plugin_Continue;
 	}
-
+	
 	int materialTrailEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iMaterialTrailRef]);
 	if (ent == materialTrailEntityIndex) {
 		return Plugin_Continue;
@@ -448,19 +451,21 @@ public void setFlags(int edict) {
 }
 
 public void attachEntityToEntity(int attachTo, int toAttach) {
-	if(!IsValidEntity(attachTo) && !IsValidEntity(toAttach)) {
+	if (!IsValidEntity(attachTo) && !IsValidEntity(toAttach)) {
 		LogError("Could not attach %i to %i", attachTo, toAttach);
 		return;
 	}
 	float m_fPosition[3];
 	GetEntPropVector(attachTo, Prop_Data, "m_vecOrigin", m_fPosition);
+	PrintToChatAll("%.2f %.2f %.2f", m_fPosition[0], m_fPosition[1], m_fPosition[2]);
+
 	TeleportEntity(toAttach, m_fPosition, NULL_VECTOR, NULL_VECTOR);
 	
 	// without delay it spawns somewhere in the map. Thanks valve!
 	DataPack linkData = CreateDataPack();
 	WritePackCell(linkData, EntIndexToEntRef(attachTo));
 	WritePackCell(linkData, EntIndexToEntRef(toAttach));
-	CreateTimer(0.01, createLink, linkData);
+	CreateTimer(0.1, createLink, linkData);
 }
 
 public Action createLink(Handle Timer, any datapack) {
@@ -488,20 +493,20 @@ public Action reverseTrackDirection(Handle timer, any trackTrainObject) {
 public attachTrail(int trail, int attachTo) {
 	float m_fOrigin[3];
 	float m_fAngle[3];
-	float m_fTemp[3] = {0.0, 90.0, 0.0};
-
+	float m_fTemp[3] =  { 0.0, 90.0, 0.0 };
+	
 	GetEntPropVector(trail, Prop_Data, "m_vecOrigin", m_fOrigin);
 	GetEntPropVector(trail, Prop_Data, "m_angAbsRotation", m_fAngle);
 	SetEntPropVector(trail, Prop_Data, "m_angAbsRotation", m_fTemp);
-
+	
 	float m_fPosition[3];
 	m_fPosition[0] = 30.0;
 	m_fPosition[1] = 0.0;
-	m_fPosition[2]= 35.0;
-	GetClientAbsOrigin(attachTo, m_fOrigin);
+	m_fPosition[2] = 35.0;
+
 	AddVectors(m_fOrigin, m_fPosition, m_fOrigin);
 	TeleportEntity(trail, m_fOrigin, m_fTemp, NULL_VECTOR);
 	SetVariantString("!activator");
 	AcceptEntityInput(trail, "SetParent", attachTo, trail);
 	SetEntPropVector(attachTo, Prop_Data, "m_angAbsRotation", m_fAngle);
-}
+} 
