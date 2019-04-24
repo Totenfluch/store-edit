@@ -65,6 +65,12 @@ public void previewItemToPlayer(int client, int itemid) {
 		createParticleTrailPreview(client, itemid);
 	} else if (StrEqual(itemtype, "trail")) {
 		createMaterialTrailPreview(client, itemid);
+	} else if (StrEqual(itemtype, "pet")) {
+		createPetPreview(client, itemid);
+	} else if (StrEqual(itemtype, "hat")) {
+		createHatPreview(client, itemid);
+	} else if (StrEqual(itemtype, "spawn_effect")) {
+		createSpawnEffectPreview(client, itemid);
 	} else {
 		PrintToChat(client, "Could not create a Preview for this item. Will be implemented soon!");
 	}
@@ -113,6 +119,35 @@ public void createMaterialTrailPreview(int client, int itemid) {
 	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime;
 }
 
+public void createPetPreview(int client, int itemid) {
+	int dummyPet = createEntityModel(client, g_eItems[itemid][szUniqueId]);
+	attachRotator(dummyPet);
+	
+	// Triggers resetAllPreviews after g_iPreviewTime seconds
+	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime;
+}
+
+public void createHatPreview(int client, int itemid) {
+	int dummyHat = createEntityModel(client, g_eItems[itemid][szUniqueId]);
+	attachRotator(dummyHat);
+	
+	float origin[3];
+	GetEntPropVector(dummyHat, Prop_Send, "m_vecOrigin", origin);
+	origin[2] += 25.0;
+	TeleportEntity(dummyHat, origin, NULL_VECTOR, NULL_VECTOR);
+	
+	// Triggers resetAllPreviews after g_iPreviewTime seconds
+	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime;
+}
+
+public void createSpawnEffectPreview(int client, int itemid) {
+	int dummyModel = createEntityModel(client, "models/player/tm_anarchist_variantb.mdl");
+	attachParticle(client, dummyModel, g_eItems[itemid][szUniqueId]);
+	
+	// Triggers resetAllPreviews after g_iPreviewTime seconds
+	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime/4;
+}
+
 public void resetAllPreviews(int client) {
 	deleteParticles(client);
 	deleteMaterialTrail(client);
@@ -124,10 +159,19 @@ public void resetAllPreviews(int client) {
 
 /* Base model creation function to use all the time */
 public int createEntityModel(int client, char[] entityModel) {
-	float m_fPosition[3];
-	float m_fAngles[3];
-	GetClientAbsOrigin(client, m_fPosition);
+	float m_fOrigin[3], m_fAngles[3], m_fRadians[2], m_fPosition[3];
+	GetClientAbsOrigin(client, m_fOrigin);
 	GetClientAbsAngles(client, m_fAngles);
+	
+	m_fRadians[0] = DegToRad(m_fAngles[0]);
+	m_fRadians[1] = DegToRad(m_fAngles[1]);
+	
+	m_fPosition[0] = m_fOrigin[0] + 64 * Cosine(m_fRadians[0]) * Cosine(m_fRadians[1]);
+	m_fPosition[1] = m_fOrigin[1] + 64 * Cosine(m_fRadians[0]) * Sine(m_fRadians[1]);
+	m_fPosition[2] = m_fOrigin[2] + 4 * Sine(m_fRadians[0]);
+	
+	m_fAngles[0] *= -1.0;
+	m_fAngles[1] *= -1.0;
 	
 	int dummyModel = CreateEntityByName("prop_dynamic");
 	if (dummyModel == -1) {
@@ -150,11 +194,9 @@ public int createEntityModel(int client, char[] entityModel) {
 	
 	DispatchSpawn(dummyModel);
 	SetEntProp(dummyModel, Prop_Send, "m_CollisionGroup", 11);
-	
-	SetVariantString("run_upper_knife");
-	AcceptEntityInput(dummyModel, "SetAnimation");
+
 	AcceptEntityInput(dummyModel, "Enable");
-	
+
 	TeleportEntity(dummyModel, m_fPosition, m_fAngles, NULL_VECTOR);
 	
 	SetVariantString("idle");
@@ -396,11 +438,6 @@ public void deleteMaterialTrail(int client) {
 
 /* TRANSMIT HOOKS */
 public Action Hook_SetTransmit_DummyModel(int ent, int client) {
-	// Invalid Ref
-	if (g_ePlayerOptions[client][iDummyModelRef] <= 0) {
-		return Plugin_Continue;
-	}
-	
 	int dummyEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iDummyModelRef]);
 	if (ent == dummyEntityIndex) {
 		return Plugin_Continue;
@@ -411,11 +448,6 @@ public Action Hook_SetTransmit_DummyModel(int ent, int client) {
 public Action Hook_SetTransmit_Particle(int ent, int client) {
 	// Particles have a bug that need FL_EDICT_ALWAYS to be constantly set to hide them
 	setFlags(ent);
-	// Invalid Ref
-	if (g_ePlayerOptions[client][iParticleRef] <= 0) {
-		return Plugin_Continue;
-	}
-	
 	int particleEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iParticleRef]);
 	if (ent == particleEntityIndex) {
 		return Plugin_Continue;
@@ -424,11 +456,6 @@ public Action Hook_SetTransmit_Particle(int ent, int client) {
 }
 
 public Action Hook_SetTransmit_MaterialTrail(int ent, int client) {
-	// Invalid Ref
-	if (g_ePlayerOptions[client][iMaterialTrailRef] <= 0) {
-		return Plugin_Continue;
-	}
-	
 	int materialTrailEntityIndex = EntRefToEntIndex(g_ePlayerOptions[client][iMaterialTrailRef]);
 	if (ent == materialTrailEntityIndex) {
 		return Plugin_Continue;
