@@ -1561,7 +1561,7 @@ DisplayStoreMenu(client, parent = -1, last = -1)
 				if (g_eItems[i][iPrice] == -1 || Store_HasClientItem(target, i))
 					AddMenuItem(m_hMenu, m_szId, g_eItems[i][szName], m_iStyle);
 				else if (!g_bInvMode[client] && g_eItems[i][iPlans] == 0 && g_eItems[i][bBuyable])
-					InsertMenuItemEx(m_hMenu, m_iPosition, (m_iPrice <= g_eClients[target][iCredits] ? ITEMDRAW_DEFAULT:ITEMDRAW_DISABLED), m_szId, "%t", "Item Available", g_eItems[i][szName], g_eItems[i][iPrice]);
+					InsertMenuItemEx(m_hMenu, m_iPosition, ITEMDRAW_DEFAULT, m_szId, "%t", "Item Available", g_eItems[i][szName], g_eItems[i][iPrice]);
 				else if (!g_bInvMode[client])
 					InsertMenuItemEx(m_hMenu, m_iPosition, (m_iPrice <= g_eClients[target][iCredits] ? ITEMDRAW_DEFAULT:ITEMDRAW_DISABLED), m_szId, "%t", "Item Plan Available", g_eItems[i][szName]);
 				++m_iPosition;

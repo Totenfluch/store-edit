@@ -14,8 +14,8 @@ enum playerPreview {
 int g_ePlayerOptions[MAXPLAYERS + 1][playerPreview];
 int g_iPreviewTime = 15;
 
-#define SF_NOUSERCONTROL    2
-#define SF_PASSABLE         8
+#define SF_NOUSERCONTROL 2
+#define SF_PASSABLE 8
 
 
 public void Preview_OnPluginStart() {
@@ -318,6 +318,7 @@ public int createMaterialTrail(int client, int itemid) {
 		LogError("failed to create trail");
 		return -1;
 	}
+	
 	DispatchKeyValue(trail, "classname", "env_sprite");
 	DispatchKeyValue(trail, "spawnflags", "1");
 	DispatchKeyValue(trail, "scale", "0.0");
@@ -335,6 +336,7 @@ public int createMaterialTrail(int client, int itemid) {
 	TE_SetupBeamFollow(trail, g_eTrails[itemIndex][iCacheID], 0, 1.0, g_eTrails[itemIndex][fWidth], g_eTrails[itemIndex][fWidth], 10, m_iColor);
 	TE_SendToAll();
 	
+	g_ePlayerOptions[client][iMaterialTrailRef] = EntIndexToEntRef(trail);
 	return trail;
 }
 
@@ -456,8 +458,7 @@ public void attachEntityToEntity(int attachTo, int toAttach) {
 		return;
 	}
 	float m_fPosition[3];
-	GetEntPropVector(attachTo, Prop_Data, "m_vecOrigin", m_fPosition);
-	PrintToChatAll("%.2f %.2f %.2f", m_fPosition[0], m_fPosition[1], m_fPosition[2]);
+	GetEntPropVector(attachTo, Prop_Send, "m_vecOrigin", m_fPosition);
 
 	TeleportEntity(toAttach, m_fPosition, NULL_VECTOR, NULL_VECTOR);
 	
@@ -465,7 +466,7 @@ public void attachEntityToEntity(int attachTo, int toAttach) {
 	DataPack linkData = CreateDataPack();
 	WritePackCell(linkData, EntIndexToEntRef(attachTo));
 	WritePackCell(linkData, EntIndexToEntRef(toAttach));
-	CreateTimer(0.1, createLink, linkData);
+	CreateTimer(0.05, createLink, linkData);
 }
 
 public Action createLink(Handle Timer, any datapack) {
@@ -495,14 +496,14 @@ public attachTrail(int trail, int attachTo) {
 	float m_fAngle[3];
 	float m_fTemp[3] =  { 0.0, 90.0, 0.0 };
 	
-	GetEntPropVector(trail, Prop_Data, "m_vecOrigin", m_fOrigin);
-	GetEntPropVector(trail, Prop_Data, "m_angAbsRotation", m_fAngle);
+	GetEntPropVector(attachTo, Prop_Data, "m_vecOrigin", m_fOrigin);
+	GetEntPropVector(attachTo, Prop_Data, "m_angAbsRotation", m_fAngle);
 	SetEntPropVector(trail, Prop_Data, "m_angAbsRotation", m_fTemp);
 	
 	float m_fPosition[3];
 	m_fPosition[0] = 30.0;
 	m_fPosition[1] = 0.0;
-	m_fPosition[2] = 35.0;
+	m_fPosition[2] = 10.0;
 
 	AddVectors(m_fOrigin, m_fPosition, m_fOrigin);
 	TeleportEntity(trail, m_fOrigin, m_fTemp, NULL_VECTOR);
