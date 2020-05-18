@@ -4,9 +4,9 @@ enum playerPreview {
 	particleSkinIndex, 
 	particleIndex, 
 	previewTimes, 
-	iTrackClient,
-	iTrackModel,
-	iTrackParticle,
+	iTrackClient, 
+	iTrackModel, 
+	iTrackParticle, 
 }
 
 int playerOptions[MAXPLAYERS + 1][playerPreview];
@@ -28,7 +28,7 @@ public void previewItemToPlayer(int client, int itemid) {
 		previewSkin(client, itemid);
 	} else if (StrEqual(itemtype, "Aura")) {
 		previewParticle(client, itemid);
-	} else if(StrEqual(itemtype, "Particles")) {
+	} else if (StrEqual(itemtype, "Particles")) {
 		createTrackTrainPreview(client, itemid);
 	}
 }

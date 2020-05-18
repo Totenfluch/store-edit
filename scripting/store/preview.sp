@@ -145,7 +145,7 @@ public void createSpawnEffectPreview(int client, int itemid) {
 	attachParticle(client, dummyModel, g_eItems[itemid][szUniqueId]);
 	
 	// Triggers resetAllPreviews after g_iPreviewTime seconds
-	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime/4;
+	g_ePlayerOptions[client][iPreviewTimeLeft] = g_iPreviewTime / 4;
 }
 
 public void resetAllPreviews(int client) {
@@ -194,9 +194,9 @@ public int createEntityModel(int client, char[] entityModel) {
 	
 	DispatchSpawn(dummyModel);
 	SetEntProp(dummyModel, Prop_Send, "m_CollisionGroup", 11);
-
+	
 	AcceptEntityInput(dummyModel, "Enable");
-
+	
 	TeleportEntity(dummyModel, m_fPosition, m_fAngles, NULL_VECTOR);
 	
 	SetVariantString("idle");
@@ -486,7 +486,7 @@ public void attachEntityToEntity(int attachTo, int toAttach) {
 	}
 	float m_fPosition[3];
 	GetEntPropVector(attachTo, Prop_Send, "m_vecOrigin", m_fPosition);
-
+	
 	TeleportEntity(toAttach, m_fPosition, NULL_VECTOR, NULL_VECTOR);
 	
 	// without delay it spawns somewhere in the map. Thanks valve!
@@ -531,7 +531,7 @@ public attachTrail(int trail, int attachTo) {
 	m_fPosition[0] = 30.0;
 	m_fPosition[1] = 0.0;
 	m_fPosition[2] = 10.0;
-
+	
 	AddVectors(m_fOrigin, m_fPosition, m_fOrigin);
 	TeleportEntity(trail, m_fOrigin, m_fTemp, NULL_VECTOR);
 	SetVariantString("!activator");
